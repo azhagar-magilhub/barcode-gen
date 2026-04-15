@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>EAN-13 Barcode Generator</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 1rem; background:#f7f7f8; }
+  h1 { font-size: 1.3rem; }
+  .card { background:#fff; padding:1.25rem; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  label { display:block; margin:.6rem 0 .25rem; font-size:.9rem; font-weight:600; }
+  input { width:100%; padding:.55rem .7rem; font-size:1rem; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; }
+  button { margin-top:1rem; padding:.65rem 1.2rem; background:#2563eb; color:#fff; border:0; border-radius:6px; font-size:1rem; cursor:pointer; }
+  button:hover { background:#1d4ed8; }
+  .out { margin-top:1.5rem; text-align:center; }
+  .meta { font-size:.85rem; color:#555; margin-top:.5rem; }
+  .err { color:#b91c1c; font-size:.85rem; margin-top:.5rem; }
+  .row { display:flex; gap:.75rem; }
+  .row > div { flex:1; }
+</style>
+</head>
+<body>
+  <h1>EAN-13 Barcode Generator</h1>
+  <div class="card">
+    <label>Prefix (2 digits)</label>
+    <input id="prefix" value="20" maxlength="2" />
+
+    <label>Item Code (5 digits)</label>
+    <input id="item" placeholder="e.g. 07956" maxlength="5" />
+
+    <div class="row">
+      <div>
+        <label>Price per kg</label>
+        <input id="price" type="number" step="0.01" placeholder="e.g. 120.50" />
+      </div>
+      <div>
+        <label>Quantity (kg)</label>
+        <input id="qty" type="number" step="0.001" placeholder="e.g. 0.750" />
+      </div>
+    </div>
+
+    <button onclick="generate()">Generate Barcode</button>
+    <div id="err" class="err"></div>
+
+    <div class="out">
+      <svg id="barcode"></svg>
+      <div id="meta" class="meta"></div>
+    </div>
+  </div>
+
+<script>
+function checkDigit(d12) {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    sum += parseInt(d12[i], 10) * (i % 2 === 0 ? 1 : 3);
+  }
+  return (10 - (sum % 10)) % 10;
+}
+
+function pad(n, len) { return String(n).padStart(len, '0'); }
+
+function generate() {
+  const err = document.getElementById('err');
+  err.textContent = '';
+  const prefix = document.getElementById('prefix').value.trim();
+  const item = document.getElementById('item').value.trim();
+  const price = parseFloat(document.getElementById('price').value);
+  const qty = parseFloat(document.getElementById('qty').value);
+
+  if (!/^\d{2}$/.test(prefix)) return err.textContent = 'Prefix must be 2 digits.';
+  if (!/^\d{1,5}$/.test(item)) return err.textContent = 'Item code must be 1–5 digits.';
+  if (isNaN(price) || price <= 0) return err.textContent = 'Enter a valid price.';
+  if (isNaN(qty) || qty <= 0) return err.textContent = 'Enter a valid quantity.';
+
+  const total = price * qty;                        // e.g. 120.50 * 0.75 = 90.375
+  const totalCents = Math.round(total * 100);       // store in paise/cents → 9038
+  if (totalCents > 99999) return err.textContent = 'Total price too large (max 999.99).';
+
+  const itemPadded = pad(item, 5);
+  const pricePadded = pad(totalCents, 5);
+  const d12 = prefix + itemPadded + pricePadded;
+  const code = d12 + checkDigit(d12);
+
+  JsBarcode('#barcode', code, {
+    format: 'EAN13', width: 2, height: 90, fontSize: 16, margin: 10
+  });
+
+  document.getElementById('meta').innerHTML =
+    `Item: <b>${itemPadded}</b> &nbsp; Qty: <b>${qty} kg</b> &nbsp; ` +
+    `Rate: <b>${price.toFixed(2)}/kg</b> &nbsp; Total: <b>${total.toFixed(2)}</b><br>` +
+    `Barcode: <b>${code}</b>`;
+}
+</script>
+</body>
+</html>
