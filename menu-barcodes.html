@@ -100,7 +100,7 @@
   <script>
   (function () {
     var MENU = JSON.parse(document.getElementById('menuData').textContent);
-    document.getElementById('snapshotAt').textContent = '2026-04-28T11:49:25.297Z';
+    document.getElementById('snapshotAt').textContent = '2026-04-28T11:57:38.368Z';
 
     function ean13Check(d12) {
       var even = 0, odd = 0;
@@ -162,7 +162,10 @@
     }
     function allowedTypes(item, c) {
       if (c.kind === 'weight') return ['EAN13'];
-      if (c.kind === 'fixed-alpha') return ['CODE128'];
+      // Alphanumeric SKUs default to Code128 but can preview numeric formats.
+      // Numeric renderers strip non-digits; the meta-row warns if the result
+      // won't match the original itemCode on scan.
+      if (c.kind === 'fixed-alpha') return ['CODE128', 'EAN13', 'UPCA', 'EAN8', 'UPCE'];
       if (c.kind === 'fixed') return ['EAN13', 'UPCA', 'EAN8', 'UPCE', 'CODE128'];
       return [];
     }
@@ -193,24 +196,34 @@
           var v = buildWeightEan13(item.itemCode, dollars);
           box.appendChild(s);
           JsBarcode(s, v, {format: 'EAN13', width: 2, height: 56, displayValue: true, fontSize: 12, margin: 4});
-        } else if (c.kind === 'fixed') {
+          return;
+        }
+        // Both 'fixed' and 'fixed-alpha' go through the same renderer below.
+        // For alphanumeric items, numeric formats strip non-digits.
+        if (c.kind === 'fixed' || c.kind === 'fixed-alpha') {
           var v2;
-          if (type === 'UPCA') v2 = buildUpca(item.itemCode);
-          else if (type === 'EAN8') v2 = buildEan8(item.itemCode);
-          else if (type === 'UPCE') v2 = buildUpcE(item.itemCode);
-          else if (type === 'CODE128') v2 = String(item.itemCode);
-          else v2 = buildEan13(item.itemCode);
-          if (!v2) { box.appendChild(el('div', {style: 'color:#a00;font-size:12px', text: type + ' incompatible with itemCode'})); return; }
+          if (type === 'CODE128') {
+            v2 = String(item.itemCode);
+          } else {
+            // Numeric formats: build from digits only; warn if no digits.
+            var digits = String(item.itemCode).replace(/\D/g, '');
+            if (!digits) {
+              box.appendChild(el('div', {style: 'color:#a00;font-size:12px', text: 'No digits in itemCode — cannot render as ' + type}));
+              return;
+            }
+            if (type === 'UPCA') v2 = buildUpca(digits);
+            else if (type === 'EAN8') v2 = buildEan8(digits);
+            else if (type === 'UPCE') v2 = buildUpcE(digits);
+            else v2 = buildEan13(digits);
+            if (!v2) { box.appendChild(el('div', {style: 'color:#a00;font-size:12px', text: type + ' incompatible with itemCode'})); return; }
+          }
           var fmtMap = {EAN13: 'EAN13', UPCA: 'UPC', EAN8: 'EAN8', UPCE: 'UPC', CODE128: 'CODE128'};
           var widthMap = {EAN13: 2, UPCA: 2, EAN8: 2.5, UPCE: 2.5, CODE128: 1.6};
           box.appendChild(s);
           JsBarcode(s, v2, {format: fmtMap[type], width: widthMap[type] || 2, height: 56, displayValue: true, fontSize: 12, margin: 4});
-        } else if (c.kind === 'fixed-alpha') {
-          box.appendChild(s);
-          JsBarcode(s, String(item.itemCode), {format: 'CODE128', width: 1.6, height: 56, displayValue: true, fontSize: 11, margin: 4});
-        } else {
-          box.appendChild(el('div', {text: c.reason || 'No barcode'}));
+          return;
         }
+        box.appendChild(el('div', {text: c.reason || 'No barcode'}));
       } catch (err) {
         box.innerHTML = '<div style="color:#c00;font-size:12px">render error: ' + (err.message || err) + '</div>';
       }
@@ -228,11 +241,18 @@
         var dollars = Math.max(0, (item.price || 0) * (qty || 1));
         html += '<div><span class="key">scan adds:</span> ' + (qty || 1).toFixed(3) + ' ' + unitLabel +
                 ' @ embedded $' + dollars.toFixed(2) + '</div>';
-      } else if (c.kind === 'fixed') {
+      } else if (c.kind === 'fixed' || c.kind === 'fixed-alpha') {
         html += '<div><span class="key">scan adds:</span> qty 1 @ menu price' +
                 ((qty | 0) > 1 ? ' <span style="color:#a00">(qty&gt;1 not encoded for fixed-price; cart adds 1 per scan)</span>' : '') +
                 '</div>';
         html += '<div><span class="key">type:</span> <code>' + type + '</code></div>';
+        // Warn when alphanumeric SKU is rendered in a numeric format — the
+        // generated barcode will not match the original menu itemCode on scan.
+        if (c.kind === 'fixed-alpha' && type !== 'CODE128') {
+          var digits = String(item.itemCode).replace(/\D/g, '');
+          html += '<div style="color:#a00;margin-top:4px">Warning: numeric encoding of an alphanumeric itemCode. Scanned value will be a digits-only form (<code>' +
+                  (digits || '(none)') + '</code>) and will not match the original itemCode <code>' + item.itemCode + '</code> in your menu.</div>';
+        }
       }
       meta.innerHTML = html;
     }
@@ -287,7 +307,7 @@
         if (allowed.length === 1) typeSel.disabled = true;
         typeField.appendChild(typeSel);
         if (c.kind === 'weight') typeField.appendChild(el('span', {class: 'lock', text: '(GS1 fixes EAN-13)'}));
-        if (c.kind === 'fixed-alpha') typeField.appendChild(el('span', {class: 'lock', text: '(only Code128)'}));
+        if (c.kind === 'fixed-alpha') typeField.appendChild(el('span', {class: 'lock', text: '(Code128 default; numeric formats strip letters)'}));
         ctrl.appendChild(typeField);
 
         var qtyField = el('div', {class: 'field'});
