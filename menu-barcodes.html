@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="cache-control" content="no-cache, must-revalidate" />
   <title>MagilHub Menu Barcodes</title>
   <style>
     * { box-sizing: border-box; }
@@ -24,24 +25,34 @@
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
     .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; }
     .card.hidden { display: none; }
+
+    /* Title row: name + subtitle on the left, badges glued top-right. */
+    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .card-head .title-block { flex: 1 1 auto; min-width: 0; }
     .card h3 { margin: 0; font-size: 14px; line-height: 1.3; word-break: break-word; }
     .card .sub { margin-top: 2px; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
-    .badges { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
-    .badge { font-size: 10px; padding: 2px 7px; border-radius: 99px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; }
+
+    .badges { display: flex; flex-wrap: wrap; gap: 4px; flex-shrink: 0; align-items: flex-start; max-width: 50%; justify-content: flex-end; }
+    .badge { font-size: 10px; padding: 2px 7px; border-radius: 99px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; white-space: nowrap; }
     .badge.weight { background: #FFF3E0; color: #E65100; border: 1px solid #FFCC80; }
     .badge.age { background: #FFEBEE; color: #C62828; border: 1px solid #EF9A9A; }
     .badge.fixed { background: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
     .badge.unsup { background: #ECEFF1; color: #455A64; border: 1px solid #B0BEC5; }
     .badge.zerop { background: #FFF8E1; color: #B07700; border: 1px solid #FFE082; }
-    .card-controls { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 6px 8px; background: #fafafa; border: 1px dashed #e6e6e6; border-radius: 6px; font-size: 12px; }
+
+    .card-controls { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 6px 8px; background: #fafafa; border: 1px dashed #e6e6e6; border-radius: 6px; font-size: 12px; }
     .card-controls .field { display: flex; align-items: center; gap: 4px; }
     .card-controls select, .card-controls input[type=number] { padding: 3px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff; }
     .card-controls input[type=number] { width: 70px; }
     .card-controls .lock { color: #999; font-style: italic; font-size: 11px; }
+
     .barcode-box { margin: 10px 0 6px 0; padding: 8px 0; text-align: center; background: #fff; border: 1px dashed #eee; border-radius: 4px; min-height: 100px; display: flex; align-items: center; justify-content: center; }
     .barcode-box svg { max-width: 100%; height: auto; }
-    .meta-row { font-size: 12px; color: #555; line-height: 1.5; margin-top: auto; }
+
+    /* meta-row: natural flow, no auto-margin (avoids drift inside grid-stretched cards). */
+    .meta-row { font-size: 12px; color: #555; line-height: 1.5; margin-top: 6px; }
     .meta-row .key { color: #888; }
+
     @media print {
       body { background: #fff; padding: 0 8px; max-width: none; }
       header, .controls, .card-controls { display: none; }
@@ -89,7 +100,7 @@
   <script>
   (function () {
     var MENU = JSON.parse(document.getElementById('menuData').textContent);
-    document.getElementById('snapshotAt').textContent = '2026-04-28T11:39:31.690Z';
+    document.getElementById('snapshotAt').textContent = '2026-04-28T11:49:25.297Z';
 
     function ean13Check(d12) {
       var even = 0, odd = 0;
@@ -241,19 +252,25 @@
         'data-supported': (c.kind === 'fixed' || c.kind === 'weight' || c.kind === 'fixed-alpha') ? '1' : '0',
         'data-class': c.kind
       });
-      card.appendChild(el('h3', {text: item.itemName || '(unnamed)'}));
-      card.appendChild(el('div', {class: 'sub', text: (item.category || '--') + (item.subCategory ? ' / ' + item.subCategory : '')}));
+
+      // Title row: title-block (h3 + sub) on the left, badges glued top-right.
+      var head = el('div', {class: 'card-head'});
+      var titleBlock = el('div', {class: 'title-block'});
+      titleBlock.appendChild(el('h3', {text: item.itemName || '(unnamed)'}));
+      titleBlock.appendChild(el('div', {class: 'sub', text: (item.category || '--') + (item.subCategory ? ' / ' + item.subCategory : '')}));
+      head.appendChild(titleBlock);
 
       var badges = el('div', {class: 'badges'});
-      if (c.kind === 'weight') badges.appendChild(el('span', {class: 'badge weight', text: 'weight / GS1 20'}));
+      if (c.kind === 'weight') badges.appendChild(el('span', {class: 'badge weight', text: 'weight / GS1'}));
       else if (c.kind === 'fixed') badges.appendChild(el('span', {class: 'badge fixed', text: 'fixed-price'}));
-      else if (c.kind === 'fixed-alpha') badges.appendChild(el('span', {class: 'badge unsup', text: 'alphanumeric / Code128'}));
+      else if (c.kind === 'fixed-alpha') badges.appendChild(el('span', {class: 'badge unsup', text: 'Code128 only'}));
       else if (c.kind === 'fixed-too-long') badges.appendChild(el('span', {class: 'badge unsup', text: 'too long'}));
-      else if (c.kind === 'weight-bad') badges.appendChild(el('span', {class: 'badge unsup', text: 'weight / PLU invalid'}));
+      else if (c.kind === 'weight-bad') badges.appendChild(el('span', {class: 'badge unsup', text: 'PLU invalid'}));
       else if (c.kind === 'weight-zero-price') badges.appendChild(el('span', {class: 'badge zerop', text: 'price = 0'}));
-      if (item.isAgeRestricted) badges.appendChild(el('span', {class: 'badge age', text: 'age-restricted' + (item.minimumAge ? ' (' + item.minimumAge + '+)' : '')}));
-      if (!(item.price > 0) && c.kind !== 'weight-zero-price') badges.appendChild(el('span', {class: 'badge zerop', text: 'price = 0'}));
-      card.appendChild(badges);
+      if (item.isAgeRestricted) badges.appendChild(el('span', {class: 'badge age', text: 'age' + (item.minimumAge ? ' ' + item.minimumAge + '+' : '')}));
+      if (!(item.price > 0) && c.kind !== 'weight-zero-price') badges.appendChild(el('span', {class: 'badge zerop', text: 'price 0'}));
+      head.appendChild(badges);
+      card.appendChild(head);
 
       var ctrl = el('div', {class: 'card-controls'});
       var typeSel = null, qtyInput = null;
@@ -275,7 +292,6 @@
 
         var qtyField = el('div', {class: 'field'});
         qtyField.appendChild(el('span', {text: c.kind === 'weight' ? ('Qty (' + (item.priceUnit || 'units') + '):') : 'Unit:'}));
-        // Weight items: decimal qty (0.001 step). Non-weight items: integer only (step=1, min=1).
         var qtyAttrs = c.kind === 'weight'
           ? {type: 'number', min: '0.001', step: '0.001', value: '1', 'data-role': 'qty'}
           : {type: 'number', min: '1', step: '1', value: '1', 'data-role': 'qty', inputmode: 'numeric'};
@@ -308,7 +324,6 @@
       if (qtyInput) {
         qtyInput.addEventListener('input', rerender);
         if (c.kind !== 'weight') {
-          // Snap to integer on blur (if user pasted decimal).
           qtyInput.addEventListener('blur', function () {
             var v = parseInt(qtyInput.value, 10);
             if (!isFinite(v) || v < 1) v = 1;
