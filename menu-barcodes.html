@@ -13,12 +13,12 @@
     }
     header {
       display: flex; justify-content: space-between; align-items: flex-end;
-      flex-wrap: wrap; gap: 12px; margin-bottom: 16px; padding-bottom: 12px;
+      flex-wrap: wrap; gap: 12px; margin-bottom: 12px; padding-bottom: 12px;
       border-bottom: 2px solid #E52333;
     }
     h1 { margin: 0 0 4px 0; color: #E52333; font-size: 22px; }
     .meta { color: #666; font-size: 13px; }
-    .meta code, .controls code, code {
+    code, .meta code, .controls code {
       background: #f3f3f3; padding: 1px 5px; border-radius: 3px;
       font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12px;
     }
@@ -33,6 +33,12 @@
       display: flex; align-items: center; gap: 4px; font-size: 13px;
       padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer;
     }
+    .controls .group {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; background: #fff;
+      font-size: 13px;
+    }
+    .controls .group label { border: 0; padding: 0; background: transparent; cursor: default; }
     .controls .stat { margin-left: auto; font-size: 13px; color: #666; }
     .controls button {
       padding: 6px 12px; font-size: 13px; border: 1px solid #E52333;
@@ -45,7 +51,7 @@
       background: #fff; border-left: 4px solid #E52333; border-radius: 0 6px 6px 0;
     }
     .grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;
     }
     .card {
       background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
@@ -67,6 +73,18 @@
     .badge.fixed  { background: #E8F5E9; color: #2E7D32; border: 1px solid #A5D6A7; }
     .badge.unsup  { background: #ECEFF1; color: #455A64; border: 1px solid #B0BEC5; }
     .badge.zerop  { background: #FFF8E1; color: #B07700; border: 1px solid #FFE082; }
+    .card-controls {
+      margin-top: 8px;
+      display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+      padding: 6px 8px; background: #fafafa; border: 1px dashed #e6e6e6; border-radius: 6px;
+      font-size: 12px;
+    }
+    .card-controls .field { display: flex; align-items: center; gap: 4px; }
+    .card-controls select, .card-controls input[type=number] {
+      padding: 3px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; background: #fff;
+    }
+    .card-controls input[type=number] { width: 70px; }
+    .card-controls .lock { color: #999; font-style: italic; font-size: 11px; }
     .barcode-box {
       margin: 10px 0 6px 0; padding: 8px 0; text-align: center;
       background: #fff; border: 1px dashed #eee; border-radius: 4px;
@@ -77,7 +95,7 @@
     .meta-row .key { color: #888; }
     @media print {
       body { background: #fff; padding: 0 8px; max-width: none; }
-      header, .controls { display: none; }
+      header, .controls, .card-controls { display: none; }
       h2.cat { background: #f7f7f7; }
       .card { break-inside: avoid; }
       .barcode-box { border: none; padding: 0; }
@@ -107,6 +125,16 @@
     <label><input type="checkbox" id="onlyWeight" /> weight-based only</label>
     <label><input type="checkbox" id="onlyAge" /> age-restricted only</label>
     <label><input type="checkbox" id="hideUnsupported" checked /> hide unsupported</label>
+    <span class="group">
+      <label for="defaultType">Default sale-by-item type:</label>
+      <select id="defaultType">
+        <option value="EAN13" selected>EAN-13</option>
+        <option value="UPCA">UPC-A</option>
+        <option value="EAN8">EAN-8</option>
+        <option value="UPCE">UPC-E</option>
+      </select>
+      <button id="applyDefault" type="button" style="font-size:11px;padding:3px 8px;">Apply to all</button>
+    </span>
     <span class="stat" id="visibleCount"></span>
   </div>
 
@@ -116,8 +144,9 @@
   <script>
   (function () {
     var MENU = JSON.parse(document.getElementById('menuData').textContent);
-    document.getElementById('snapshotAt').textContent = '2026-04-28T10:55:32.368Z';
+    document.getElementById('snapshotAt').textContent = '2026-04-28T11:34:11.101Z';
 
+    // --- barcode encoding helpers ---
     function ean13Check(d12) {
       var even = 0, odd = 0;
       for (var i = 0; i < 12; i++) {
@@ -127,16 +156,66 @@
       return (10 - ((odd + even * 3) % 10)) % 10;
     }
 
-    function buildEan13(itemCode) {
-      var digits = String(itemCode).replace(/\D/g, '');
-      if (!digits) return null;
-      digits = ('000000000000' + digits).slice(-12);
-      return digits + ean13Check(digits);
+    function buildEan13(numericCode) {
+      var d = String(numericCode).replace(/\D/g, '');
+      if (!d) return null;
+      d = ('000000000000' + d).slice(-12);
+      return d + ean13Check(d);
     }
 
-    function buildWeightEan13(itemCode, priceDollars) {
+    function buildUpca(numericCode) {
+      var d = String(numericCode).replace(/\D/g, '');
+      if (!d) return null;
+      d = ('00000000000' + d).slice(-11);
+      // UPC-A check: same algorithm as EAN-13 with leading 0 padding to 12.
+      return d + ean13Check('0' + d);
+    }
+
+    function buildEan8(numericCode) {
+      var d = String(numericCode).replace(/\D/g, '');
+      if (!d) return null;
+      d = ('0000000' + d).slice(-7);
+      // EAN-8 check: position-weighted (3,1,3,1,3,1,3) on first 7.
+      var s = 0;
+      for (var i = 0; i < 7; i++) s += (+d[i]) * (i % 2 === 0 ? 3 : 1);
+      var check = (10 - (s % 10)) % 10;
+      return d + check;
+    }
+
+    function buildUpcE(numericCode) {
+      // UPC-E requires NS=0 or 1 and a structure-compatible UPC-A. We build a
+      // UPC-A first, then attempt compression. If incompatible, fall back to
+      // null -- caller should pick another format.
+      var upca = buildUpca(numericCode);
+      if (!upca) return null;
+      // Compression rules (UPC-A -> UPC-E) per GS1 §5.2.2.3.
+      var ns = upca[0];
+      if (ns !== '0' && ns !== '1') return null;
+      var manuf = upca.slice(1, 6);
+      var item = upca.slice(6, 11);
+      var upce5;
+      if (manuf.endsWith('000') && (+item) >= 0 && (+item) <= 999) {
+        // X1 X2 X3 0 0 0 / 0 0 X4 X5 X6 -> X1 X2 X4 X5 X6 with last digit = 0..2
+        // Use mode 0|1|2 from the 3rd manuf digit (which IS the number 0|1|2).
+        var x3 = manuf[2];
+        if (x3 !== '0' && x3 !== '1' && x3 !== '2') return null;
+        upce5 = manuf[0] + manuf[1] + item.slice(2) + x3;
+      } else if (manuf.endsWith('00') && (+item) >= 0 && (+item) <= 99) {
+        upce5 = manuf.slice(0, 3) + item.slice(3) + '3';
+      } else if (manuf.endsWith('0') && (+item) >= 0 && (+item) <= 9) {
+        upce5 = manuf.slice(0, 4) + item.slice(4) + '4';
+      } else if ((+item) >= 5 && (+item) <= 9) {
+        upce5 = manuf + item.slice(4);
+      } else {
+        return null;
+      }
+      // Recompute UPC-A check digit from the original (unchanged).
+      return ns + upce5 + upca[11];
+    }
+
+    function buildWeightEan13(itemCode, embeddedDollars) {
       var plu = ('00000' + String(itemCode).replace(/\D/g, '')).slice(-5);
-      var cents = Math.round(Math.max(0, priceDollars || 0) * 100);
+      var cents = Math.round(Math.max(0, embeddedDollars || 0) * 100);
       var priceStr = ('00000' + cents).slice(-5);
       var first12 = '20' + plu + priceStr;
       return first12 + ean13Check(first12);
@@ -149,18 +228,22 @@
         if (!/^\d+$/.test(raw) || pluDigits.length === 0 || pluDigits.length > 5) {
           return {kind: 'weight-bad', reason: 'PLU must be <=5 numeric digits'};
         }
-        if (!(item.price > 0)) {
-          return {kind: 'weight-zero-price'};
-        }
+        if (!(item.price > 0)) return {kind: 'weight-zero-price'};
         return {kind: 'weight'};
       }
       if (!/^\d+$/.test(raw)) {
-        return {kind: 'fixed-alpha', reason: 'Alphanumeric itemCode (Code128, out of scope)'};
+        return {kind: 'fixed-alpha', reason: 'Alphanumeric (Code128 only)'};
       }
-      if (raw.length > 13) {
-        return {kind: 'fixed-too-long', reason: 'itemCode > 13 digits'};
-      }
+      if (raw.length > 13) return {kind: 'fixed-too-long', reason: 'itemCode > 13 digits'};
       return {kind: 'fixed'};
+    }
+
+    // Allowed types per item class.
+    function allowedTypes(item, c) {
+      if (c.kind === 'weight') return ['EAN13'];                  // GS1 requires EAN-13
+      if (c.kind === 'fixed-alpha') return ['CODE128'];           // alphanumeric only fits Code128
+      if (c.kind === 'fixed') return ['EAN13', 'UPCA', 'EAN8', 'UPCE', 'CODE128'];
+      return [];
     }
 
     function el(tag, attrs, children) {
@@ -182,11 +265,73 @@
       }
       return node;
     }
-
     function svgEl() { return document.createElementNS('http://www.w3.org/2000/svg', 'svg'); }
+
+    function renderInto(box, item, type, qty) {
+      box.innerHTML = '';
+      var c = classify(item);
+      try {
+        var s = svgEl();
+        if (c.kind === 'weight') {
+          var dollars = Math.max(0, (item.price || 0) * (qty || 1));
+          var v = buildWeightEan13(item.itemCode, dollars);
+          box.appendChild(s);
+          JsBarcode(s, v, {format: 'EAN13', width: 2, height: 56, displayValue: true, fontSize: 12, margin: 4});
+        } else if (c.kind === 'fixed') {
+          var v2;
+          if (type === 'UPCA') v2 = buildUpca(item.itemCode);
+          else if (type === 'EAN8') v2 = buildEan8(item.itemCode);
+          else if (type === 'UPCE') v2 = buildUpcE(item.itemCode);
+          else if (type === 'CODE128') v2 = String(item.itemCode);
+          else v2 = buildEan13(item.itemCode);
+          if (!v2) {
+            box.appendChild(el('div', {style: 'color:#a00;font-size:12px', text: type + ' incompatible with itemCode'}));
+            return;
+          }
+          var fmtMap = {EAN13: 'EAN13', UPCA: 'UPC', EAN8: 'EAN8', UPCE: 'UPC', CODE128: 'CODE128'};
+          var widthMap = {EAN13: 2, UPCA: 2, EAN8: 2.5, UPCE: 2.5, CODE128: 1.6};
+          box.appendChild(s);
+          JsBarcode(s, v2, {format: fmtMap[type], width: widthMap[type] || 2, height: 56, displayValue: true, fontSize: 12, margin: 4});
+        } else if (c.kind === 'fixed-alpha') {
+          box.appendChild(s);
+          JsBarcode(s, String(item.itemCode), {format: 'CODE128', width: 1.6, height: 56, displayValue: true, fontSize: 11, margin: 4});
+        } else {
+          box.appendChild(el('div', {text: c.reason || 'No barcode'}));
+        }
+      } catch (err) {
+        box.innerHTML = '<div style="color:#c00;font-size:12px">render error: ' + (err.message || err) + '</div>';
+      }
+    }
+
+    function updateMetaRow(meta, item, type, qty) {
+      var c = classify(item);
+      var unitLabel = item.priceUnit || (item.isWeightBased ? 'unit' : 'qty');
+      var html = '';
+      html += '<div><span class="key">itemCode:</span> <code>' + item.itemCode + '</code></div>';
+      html += '<div><span class="key">price:</span> <code>' + (item.price != null ? item.price : '--') + '</code>';
+      if (item.priceUnit) html += ' / <code>' + item.priceUnit + '</code>';
+      html += '</div>';
+      if (c.kind === 'weight') {
+        var dollars = Math.max(0, (item.price || 0) * (qty || 1));
+        html += '<div><span class="key">scan adds:</span> ' + (qty || 1).toFixed(3) + ' ' + unitLabel +
+                ' @ embedded $' + dollars.toFixed(2) + '</div>';
+      } else if (c.kind === 'fixed') {
+        html += '<div><span class="key">scan adds:</span> qty 1 @ menu price' +
+                (qty > 1 ? ' <span style="color:#a00">(qty&gt;1 not encoded for fixed-price; cart adds 1 per scan)</span>' : '') +
+                '</div>';
+        html += '<div><span class="key">type:</span> <code>' + type + '</code></div>';
+      }
+      meta.innerHTML = html;
+    }
 
     function renderCard(item) {
       var c = classify(item);
+      var allowed = allowedTypes(item, c);
+      var initialType = c.kind === 'fixed' ? 'EAN13'
+                      : c.kind === 'fixed-alpha' ? 'CODE128'
+                      : 'EAN13';
+      var initialQty = 1;
+
       var card = el('div', {
         class: 'card',
         'data-cat': item.category || '(uncategorized)',
@@ -194,14 +339,17 @@
         'data-code': item.itemCode.toLowerCase(),
         'data-weight': item.isWeightBased ? '1' : '0',
         'data-age': item.isAgeRestricted ? '1' : '0',
-        'data-supported': (c.kind === 'fixed' || c.kind === 'weight') ? '1' : '0'
+        'data-supported': (c.kind === 'fixed' || c.kind === 'weight' || c.kind === 'fixed-alpha') ? '1' : '0',
+        'data-class': c.kind
       });
+
       card.appendChild(el('h3', {text: item.itemName || '(unnamed)'}));
       card.appendChild(el('div', {class: 'sub', text: (item.category || '--') + (item.subCategory ? ' / ' + item.subCategory : '')}));
+
       var badges = el('div', {class: 'badges'});
       if (c.kind === 'weight') badges.appendChild(el('span', {class: 'badge weight', text: 'weight / GS1 20'}));
-      else if (c.kind === 'fixed') badges.appendChild(el('span', {class: 'badge fixed', text: 'fixed-price / EAN-13'}));
-      else if (c.kind === 'fixed-alpha') badges.appendChild(el('span', {class: 'badge unsup', text: 'unsupported (Code128)'}));
+      else if (c.kind === 'fixed') badges.appendChild(el('span', {class: 'badge fixed', text: 'fixed-price'}));
+      else if (c.kind === 'fixed-alpha') badges.appendChild(el('span', {class: 'badge unsup', text: 'alphanumeric / Code128'}));
       else if (c.kind === 'fixed-too-long') badges.appendChild(el('span', {class: 'badge unsup', text: 'too long'}));
       else if (c.kind === 'weight-bad') badges.appendChild(el('span', {class: 'badge unsup', text: 'weight / PLU invalid'}));
       else if (c.kind === 'weight-zero-price') badges.appendChild(el('span', {class: 'badge zerop', text: 'price = 0'}));
@@ -209,39 +357,56 @@
       if (!(item.price > 0) && c.kind !== 'weight-zero-price') badges.appendChild(el('span', {class: 'badge zerop', text: 'price = 0'}));
       card.appendChild(badges);
 
+      // Per-card controls
+      var ctrl = el('div', {class: 'card-controls'});
+      if (c.kind === 'fixed' || c.kind === 'weight' || c.kind === 'fixed-alpha') {
+        var typeField = el('div', {class: 'field'});
+        typeField.appendChild(el('span', {text: 'Type:'}));
+        var typeSel = el('select', {'data-role': 'type'});
+        allowed.forEach(function (t) {
+          var label = t === 'EAN13' ? 'EAN-13'
+                    : t === 'UPCA' ? 'UPC-A'
+                    : t === 'EAN8' ? 'EAN-8'
+                    : t === 'UPCE' ? 'UPC-E'
+                    : t === 'CODE128' ? 'Code128' : t;
+          var opt = el('option', {value: t, text: label});
+          if (t === initialType) opt.setAttribute('selected', 'selected');
+          typeSel.appendChild(opt);
+        });
+        if (allowed.length === 1) typeSel.disabled = true;
+        typeField.appendChild(typeSel);
+        if (c.kind === 'weight') typeField.appendChild(el('span', {class: 'lock', text: '(GS1 fixes EAN-13)'}));
+        if (c.kind === 'fixed-alpha') typeField.appendChild(el('span', {class: 'lock', text: '(only Code128)'}));
+        ctrl.appendChild(typeField);
+
+        var qtyField = el('div', {class: 'field'});
+        qtyField.appendChild(el('span', {text: c.kind === 'weight' ? ('Qty (' + (item.priceUnit || 'units') + '):') : 'Unit:'}));
+        var qtyInput = el('input', {type: 'number', min: '0.001', step: '0.001', value: '1', 'data-role': 'qty'});
+        qtyField.appendChild(qtyInput);
+        if (c.kind !== 'weight') qtyField.appendChild(el('span', {class: 'lock', text: '(cart adds qty 1 per scan)'}));
+        ctrl.appendChild(qtyField);
+      }
+      card.appendChild(ctrl);
+
       var box = el('div', {class: 'barcode-box'});
       card.appendChild(box);
 
-      try {
-        if (c.kind === 'fixed') {
-          var ean = buildEan13(item.itemCode);
-          var s = svgEl(); box.appendChild(s);
-          JsBarcode(s, ean, {format: 'EAN13', width: 2, height: 56, displayValue: true, fontSize: 12, margin: 4});
-        } else if (c.kind === 'weight') {
-          var wean = buildWeightEan13(item.itemCode, item.price);
-          var ws = svgEl(); box.appendChild(ws);
-          JsBarcode(ws, wean, {format: 'EAN13', width: 2, height: 56, displayValue: true, fontSize: 12, margin: 4});
-        } else if (c.kind === 'fixed-alpha') {
-          var cs = svgEl(); box.appendChild(cs);
-          JsBarcode(cs, String(item.itemCode), {format: 'CODE128', width: 1.5, height: 56, displayValue: true, fontSize: 11, margin: 4});
-        } else {
-          box.appendChild(el('div', {text: c.reason || 'No barcode generated'}));
-        }
-      } catch (err) {
-        box.innerHTML = '<div style="color:#c00;font-size:12px">render error: ' + (err.message || err) + '</div>';
-      }
-
       var meta = el('div', {class: 'meta-row'});
-      meta.innerHTML =
-        '<div><span class="key">itemCode:</span> <code>' + item.itemCode + '</code></div>' +
-        '<div><span class="key">price:</span> <code>' + (item.price != null ? item.price : '--') + '</code>' +
-        (item.priceUnit ? ' / <code>' + item.priceUnit + '</code>' : '') + '</div>' +
-        (c.kind === 'weight'
-          ? '<div><span class="key">scan adds:</span> 1.00 ' + (item.priceUnit || 'unit') + ' @ embedded $' + (item.price > 0 ? item.price.toFixed(2) : '0.00') + '</div>'
-          : c.kind === 'fixed'
-            ? '<div><span class="key">scan adds:</span> qty 1 @ menu price</div>'
-            : '');
       card.appendChild(meta);
+
+      function rerender() {
+        var t = (typeSel && typeSel.value) || initialType;
+        var q = (qtyInput && qtyInput.valueAsNumber) || 1;
+        if (!isFinite(q) || q <= 0) q = 1;
+        renderInto(box, item, t, q);
+        updateMetaRow(meta, item, t, q);
+      }
+      var typeSel, qtyInput;
+      typeSel = ctrl.querySelector('[data-role=type]');
+      qtyInput = ctrl.querySelector('[data-role=qty]');
+      if (typeSel) typeSel.addEventListener('change', rerender);
+      if (qtyInput) qtyInput.addEventListener('input', rerender);
+      rerender();
       return card;
     }
 
@@ -301,6 +466,19 @@
     document.getElementById('onlyWeight').addEventListener('change', applyFilters);
     document.getElementById('onlyAge').addEventListener('change', applyFilters);
     document.getElementById('hideUnsupported').addEventListener('change', applyFilters);
+
+    document.getElementById('applyDefault').addEventListener('click', function () {
+      var t = document.getElementById('defaultType').value;
+      var cards = document.querySelectorAll('.card[data-class=fixed]');
+      for (var i = 0; i < cards.length; i++) {
+        var sel = cards[i].querySelector('[data-role=type]');
+        if (sel && !sel.disabled) {
+          sel.value = t;
+          sel.dispatchEvent(new Event('change'));
+        }
+      }
+    });
+
     applyFilters();
   })();
   </script>
