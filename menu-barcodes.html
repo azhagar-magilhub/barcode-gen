@@ -283,7 +283,7 @@
       var badges = el('div', {class: 'badges'});
       if (c.kind === 'weight') badges.appendChild(el('span', {class: 'badge weight', text: 'weight / GS1'}));
       else if (c.kind === 'fixed') badges.appendChild(el('span', {class: 'badge fixed', text: 'fixed-price'}));
-      else if (c.kind === 'fixed-alpha') badges.appendChild(el('span', {class: 'badge unsup', text: 'Code128 only'}));
+      else if (c.kind === 'fixed-alpha') badges.appendChild(el('span', {class: 'badge unsup', text: 'Alphanumeric'}));
       else if (c.kind === 'fixed-too-long') badges.appendChild(el('span', {class: 'badge unsup', text: 'too long'}));
       else if (c.kind === 'weight-bad') badges.appendChild(el('span', {class: 'badge unsup', text: 'PLU invalid'}));
       else if (c.kind === 'weight-zero-price') badges.appendChild(el('span', {class: 'badge zerop', text: 'price = 0'}));
